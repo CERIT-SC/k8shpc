@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8shpc-mutating-webhook-map
+  namespace: k8shpc-ns
+data:
+  cpul: 8

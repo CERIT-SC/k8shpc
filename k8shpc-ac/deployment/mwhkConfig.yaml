@@ -1,0 +1,25 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: k8shpc-mutating-webhook.cerit.io
+  annotations:
+    cert-manager.io/inject-ca-from-secret: k8shpc-ns/k8shpc-mutating-webhook-cert-secret
+webhooks:
+  - name: k8shpc-mutating-webhook.cerit.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 10
+    clientConfig:
+      service:
+        name: k8shpc-mutating-webhook-svc
+        namespace: k8shpc-ns
+        path: "/mutate"
+    objectSelector:
+      matchLabels:
+        hpctransfer: "yes"
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        resources: ["jobs"]
+        scope: "*"

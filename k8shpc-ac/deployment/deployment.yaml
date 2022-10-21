@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8shpc-mutating-webhook-dep
+  namespace: k8shpc-ns
+spec:
+  selector:
+    matchLabels:
+      app: k8shpc-mutating-webhook
+  template:
+    metadata:
+      labels:
+        app: k8shpc-mutating-webhook
+    spec:
+#      serviceAccountName: k8shpc-sa
+      containers:
+        - image: cerit.io/cerit/k8shpc:19-10-2022-5-editable
+          env:
+            - name: "TAG"
+              value: "v0.4"
+            - name: "IMAGE"
+              value: "cerit.io/cerit/geant-proxy"
+            - name: "CPU_LIMIT"
+              valueFrom:
+                configMapKeyRef:
+                  name: k8shpc-mutating-webhook-map
+                  key: cpul
+#          readinessProbe:
+#            httpGet:
+#              path: /health
+#              port: 8443
+#            initialDelaySeconds: 3
+#            periodSeconds: 3
+          name: k8shpc-mutating-pod
+          volumeMounts:
+            - name: tls
+              mountPath: "/etc/tls"
+      securityContext:
+        runAsUser: 1000
+      volumes:
+        - name: tls
+          secret:
+            secretName: k8shpc-mutating-webhook-cert-secret
