@@ -4,4 +4,4 @@ metadata:
   name: k8shpc-mutating-webhook-map
   namespace: k8shpc-ns
 data:
-  cpul: 8
+  cpul: "8"

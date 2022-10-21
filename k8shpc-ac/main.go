@@ -142,6 +142,26 @@ func addEnvVarFromField(envname, field string, isResource bool, patches []map[st
 	return patches
 }
 
+func getPVCMountPath(job batchv1.Job) map[string]string {
+	volumes := job.Spec.Template.Spec.Volumes
+	volumeMounts := job.Spec.Template.Spec.Containers[0].VolumeMounts
+	pvcnames := map[string]string{}
+	for _, v := range volumes {
+		if v.VolumeSource.PersistentVolumeClaim != nil {
+			pvcnames[v.Name] = v.VolumeSource.PersistentVolumeClaim.ClaimName
+		}
+	}
+
+	volumeMountpath := map[string]string{}
+	for _, vm := range volumeMounts {
+		if pvcnames[vm.Name] != "" {
+			name := fmt.Sprintf("PVC_%s", pvcnames[vm.Name])
+			volumeMountpath[name] = vm.MountPath
+		}
+	}
+	return volumeMountpath
+}
+
 func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	infoLogger.Println("received mutation request")
 
@@ -249,16 +269,10 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	//}
 	//patches = append(patches, aPatch)
 
-	//// VOLUME MOUNTS
-	var mountPaths string
-	for i, vm := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
-		if i == len(job.Spec.Template.Spec.Containers[0].VolumeMounts)-1 {
-			mountPaths += vm.MountPath
-		} else {
-			mountPaths += fmt.Sprintf("%s,", vm.MountPath)
-		}
+	vmp := getPVCMountPath(job)
+	for pvcname, mp := range vmp {
+		patches = addEnvVar(pvcname, mp, patches)
 	}
-	patches = addEnvVar("MNT", mountPaths, patches)
 
 	patchesM, err = json.Marshal(patches)
 	if err != nil {

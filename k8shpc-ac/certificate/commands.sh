@@ -12,10 +12,11 @@ csrName=${service}.${namespace}
 # -out client.csr -config csr.conf
 
 # clean-up any previously created CSR for our service. Ignore errors if not present.
-
 kubectl config use-context ${context}
 kubectl delete csr ${csrName} 2>/dev/null || true
 
+# Use K8s built-in signer kubelet-serving
+# https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/#kubernetes-signers
 cat <<EOF | kubectl create -f -
 apiVersion: certificates.k8s.io/v1
 kind: CertificateSigningRequest
