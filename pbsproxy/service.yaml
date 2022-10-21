@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${POD_NAME}
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: ${POD_NAME}.dyn.cloud.e-infra.cz
+    metallb.universe.tf/address-pool: privmuni
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 22
+    targetPort: 2222
+  selector:
+    app: ${POD_NAME}
+  externalTrafficPolicy: Local
+
