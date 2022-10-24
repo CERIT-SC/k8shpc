@@ -20,7 +20,22 @@ export ssh_key=`cat /home/funnelworker/.ssh/id_rsa`
 
 export ssh_host=$POD_NAME.dyn.cloud.e-infra.cz
 
-envsubst '$COMMAND $CONTAINER $ssh_host $ssh_key' < /srv/run-qsub.sh > /tmp/run-qsub.sh
+if [ -z $CPUL ]; then
+   CPUL=$CPUR
+fi
+
+if echo $CPUL | grep -q "m"; then
+   CPUL=`echo $CPUL | sed -e 's/m//'`
+   CPUL=$[CPUL/1000+1]
+fi
+
+if [ -z $MEML ]; then
+   MEML=$MEMR
+fi
+
+MEML="$[MEML/1073741824+1]gb" # to GB
+
+envsubst '$COMMAND $CONTAINER $ssh_host $ssh_key $MEML $CPUL' < /srv/run-qsub.sh > /tmp/run-qsub.sh
 
 jobid=`/usr/bin/qsub /tmp/run-qsub.sh`
 
