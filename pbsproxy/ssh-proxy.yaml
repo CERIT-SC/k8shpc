@@ -1,0 +1,28 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${PROXYNAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${PROXYNAME}
+  template:
+    metadata:
+      labels:
+        app: ${PROXYNAME}
+    spec:
+      containers:
+      - name: geant-proxy
+        image: cerit.io/cerit/geant-proxy:v0.1
+        imagePullPolicy: IfNotPresent
+        securityContext:                                                          
+          runAsUser: 1000 
+          runAsGroup: 1000
+        resources:
+          limits:
+            cpu: 1
+            memory: 256Mi
+        ports:
+        - containerPort: 2222

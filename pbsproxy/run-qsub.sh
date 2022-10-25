@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -o zuphux.cerit-sc.cz:logs/${PBS_JOBID}.stdout
 #PBS -e zuphux.cerit-sc.cz:logs/${PBS_JOBID}.stderr
-#PBS -l select=1:scratch_ssd=20gb
+#PBS -l select=1:ncpus=$CPUL:mem=$MEML:scratch_ssd=20gb
 
 sshkey="$ssh_key"
 

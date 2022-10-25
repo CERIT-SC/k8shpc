@@ -27,5 +27,6 @@ COPY test.sh /home/funnelworker/test.sh
 COPY start.sh /srv/
 COPY run-qsub.sh /srv/
 COPY service.yaml /srv/
+COPY ssh-proxy.yaml /srv/
 
 CMD /bin/bash -c "set | grep 'PROXY\|KUBERNETES' | sed -e 's/^/export /' >> /home/funnelworker/.bashrc; /usr/sbin/sshd; if [ -n \"$SSH_KEY\" ]; then echo \"$SSH_KEY\" > /home/funnelworker/.ssh/authorized_keys; fi; tail -f /dev/null"
