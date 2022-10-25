@@ -20,6 +20,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 )
 
 var (
@@ -37,6 +39,12 @@ func init() {
 	warningLogger = log.New(os.Stderr, "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
 	errorLogger = log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 	deserializer = serializer.NewCodecFactory(runtime.NewScheme()).UniversalDeserializer()
+}
+
+func sendErrorResponse(w http.ResponseWriter, msg string) {
+	errorLogger.Println(msg)
+	w.WriteHeader(400)
+	w.Write([]byte(msg))
 }
 
 func main() {
@@ -58,13 +66,6 @@ func main() {
 		errorLogger.Println("Can't serve TLS server, exiting.")
 		panic(err)
 	}
-}
-
-func serveHealth(writer http.ResponseWriter, request *http.Request) {
-	msg := fmt.Sprintf("healthy uri %s", request.RequestURI)
-	infoLogger.Println(msg)
-	writer.WriteHeader(200)
-	writer.Write([]byte(msg))
 }
 
 func replacePodSpecItem(path string, value interface{}, patches []map[string]interface{}) []map[string]interface{} {
@@ -155,11 +156,33 @@ func getPVCMountPath(job batchv1.Job) map[string]string {
 	volumeMountpath := map[string]string{}
 	for _, vm := range volumeMounts {
 		if pvcnames[vm.Name] != "" {
-			name := fmt.Sprintf("PVC_%s", pvcnames[vm.Name])
+			name := fmt.Sprintf("PVC_%s", strings.ReplaceAll(pvcnames[vm.Name], "-", "_"))
 			volumeMountpath[name] = vm.MountPath
 		}
 	}
 	return volumeMountpath
+}
+
+func generateAllowResponse(admissionReviewReq admissionv1.AdmissionReview, patchesM []byte) admissionv1.AdmissionReview {
+	reviewResponse := &admissionv1.AdmissionResponse{
+		UID:     admissionReviewReq.Request.UID,
+		Allowed: true,
+	}
+
+	if patchesM != nil {
+		patchType := admissionv1.PatchTypeJSONPatch
+		reviewResponse.Patch = patchesM
+		reviewResponse.PatchType = &patchType
+	}
+
+	admissionReviewResponse := admissionv1.AdmissionReview{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "admission.k8s.io/v1",
+			Kind:       "AdmissionReview",
+		},
+		Response: reviewResponse,
+	}
+	return admissionReviewResponse
 }
 
 func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
@@ -180,44 +203,56 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 
 	_, _, err = deserializer.Decode(body, nil, &admissionReviewReq)
 	if err != nil {
-		msg := fmt.Sprintf("unmarshalling body into admission review object not successful: %v", err)
-		errorLogger.Println(msg)
-		w.WriteHeader(400)
-		w.Write([]byte(msg))
+		sendErrorResponse(w, fmt.Sprintf("unmarshalling body into admission review object not successful: %v", err))
 		return
 	} else if admissionReviewReq.Request == nil {
-		msg := fmt.Sprintf("using admission review not possible: request field is nil: %v", err)
-		errorLogger.Println(msg)
-		w.WriteHeader(400)
-		w.Write([]byte(msg))
+		sendErrorResponse(w, fmt.Sprintf("using admission review not possible: request field is nil: %v", err))
 		return
 	}
 
 	// check job with label received although mwh conf should have done that
 	if admissionReviewReq.Request.Resource.Resource != "jobs" && admissionReviewReq.Request.Resource.Version != "v1" &&
 		admissionReviewReq.Request.Resource.Group != "batch" {
-		msg := fmt.Sprintf("wrong resource type: %v", err)
-		errorLogger.Println(msg)
-		w.WriteHeader(400)
-		w.Write([]byte(msg))
+		sendErrorResponse(w, fmt.Sprintf("wrong resource type: %v", err))
 		return
 	}
 
 	job := batchv1.Job{}
 	err = json.Unmarshal(admissionReviewReq.Request.Object.Raw, &job)
 	if err != nil {
-		msg := fmt.Sprintf("deserializing job not successful: %v", err)
-		errorLogger.Println(msg)
-		w.WriteHeader(400)
-		w.Write([]byte(msg))
+		sendErrorResponse(w, fmt.Sprintf("deserializing job not successful: %v", err))
 		return
 	}
 
 	if val, ok := job.Labels["hpctransfer"]; !ok || val != "yes" {
-		msg := fmt.Sprintf("job is not valid for mutation: label 'hpctransfer' not found or not set to 'yes'")
-		errorLogger.Println(msg)
-		w.WriteHeader(400)
-		w.Write([]byte(msg))
+		sendErrorResponse(w, fmt.Sprintf("job is not valid for mutation: label 'hpctransfer' not found "+
+			"or not set to 'yes'"))
+		return
+	}
+
+	if len(job.Spec.Template.Spec.Containers) != 1 {
+		admissionReviewResponse := generateAllowResponse(admissionReviewReq, nil)
+		jout, err := json.Marshal(admissionReviewResponse)
+		if err != nil {
+			sendErrorResponse(w, fmt.Sprintf("marshalling response not successful: %v", err))
+			return
+		}
+		infoLogger.Println("sending back response, spec not changed (multiple containers)")
+		w.WriteHeader(200)
+		w.Write(jout)
+		return
+	}
+
+	if len(job.Spec.Template.Spec.Containers[0].Ports) != 0 {
+		admissionReviewResponse := generateAllowResponse(admissionReviewReq, nil)
+		jout, err := json.Marshal(admissionReviewResponse)
+		if err != nil {
+			sendErrorResponse(w, fmt.Sprintf("marshalling response not successful: %v", err))
+			return
+		}
+		infoLogger.Println("sending back response, spec not changed (exposed ports)")
+		w.WriteHeader(200)
+		w.Write(jout)
 		return
 	}
 
@@ -233,7 +268,8 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 		tag = ""
 	}
 
-	replaceCommand := []string{"/bin/bash", "-c", "/srv/start.sh"}
+	//replaceCommand := []string{"/bin/bash", "-c", "/srv/start.sh"}
+	replaceCommand := []string{"/bin/bash", "-c", "sleep infinity"}
 
 	patches = replacePodSpecItem("containers/0/image", fmt.Sprintf("%s:%s", image, tag), patches)
 	patches = replacePodSpecItem("containers/0/command", replaceCommand, patches)
@@ -256,18 +292,9 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	labelsEmpty = len(job.Spec.Template.Labels) == 0
 	patches = addLabelToPod("app", job.Name, patches)
 
-	// ARGS FOR JOB
-	//var args string
-	//for _, s := range job.Spec.Template.Spec.Containers[0].Args {
-	//	args = s + " "
-	//}
-	//aEnv := map[string]string{"name": "ARGS", "value": args}
-	//aPatch := map[string]interface{}{
-	//	"op":    "add",
-	//	"path":  "/spec/template/spec/containers/0/env/-1",
-	//	"value": aEnv,
-	//}
-	//patches = append(patches, aPatch)
+	for i, arg := range job.Spec.Template.Spec.Containers[0].Args {
+		patches = addEnvVar(arg+strconv.Itoa(i), arg, patches)
+	}
 
 	vmp := getPVCMountPath(job)
 	for pvcname, mp := range vmp {
@@ -276,38 +303,25 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 
 	patchesM, err = json.Marshal(patches)
 	if err != nil {
-		msg := fmt.Sprintf("marshalling patches not successful: %v", err)
-		errorLogger.Println(msg)
-		w.WriteHeader(400)
-		w.Write([]byte(msg))
+		sendErrorResponse(w, fmt.Sprintf("marshalling patches not successful: %v", err))
 		return
 	}
 
-	patchType := admissionv1.PatchTypeJSONPatch
-	reviewResponse := &admissionv1.AdmissionResponse{
-		UID:       admissionReviewReq.Request.UID,
-		Allowed:   true,
-		Patch:     patchesM,
-		PatchType: &patchType,
-	}
-
-	admissionReviewResponse := admissionv1.AdmissionReview{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "admission.k8s.io/v1",
-			Kind:       "AdmissionReview",
-		},
-		Response: reviewResponse,
-	}
+	admissionReviewResponse := generateAllowResponse(admissionReviewReq, patchesM)
 
 	jout, err := json.Marshal(admissionReviewResponse)
 	if err != nil {
-		msg := fmt.Sprintf("marshalling response not successful: %v", err)
-		errorLogger.Println(msg)
-		w.WriteHeader(400)
-		w.Write([]byte(msg))
+		sendErrorResponse(w, fmt.Sprintf("marshalling response not successful: %v", err))
 		return
 	}
-	infoLogger.Println("sending back response")
+	infoLogger.Println("sending back response, job spec changed")
 	w.WriteHeader(200)
 	w.Write(jout)
+}
+
+func serveHealth(writer http.ResponseWriter, request *http.Request) {
+	msg := fmt.Sprintf("healthy uri %s", request.RequestURI)
+	infoLogger.Println(msg)
+	writer.WriteHeader(200)
+	writer.Write([]byte(msg))
 }
