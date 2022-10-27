@@ -15,8 +15,12 @@ webhooks:
         namespace: k8shpc-ns
         path: "/mutate"
     objectSelector:
-      matchLabels:
-        hpctransfer: "yes"
+      matchExpressions:
+        - key: hpctransfer
+          operator: In
+          values: ["can", "must"]
+#      matchLabels:
+#        hpctransfer: "yes"
     rules:
       - operations: ["CREATE"]
         apiGroups: ["batch"]
