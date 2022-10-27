@@ -14,7 +14,7 @@ spec:
     spec:
 #      serviceAccountName: k8shpc-sa
       containers:
-        - image: cerit.io/cerit/k8shpc:26-10-2022-editable
+        - image: cerit.io/cerit/k8shpc:27-10-2022-editable
           env:
             - name: "TAG"
               value: "v0.4"
