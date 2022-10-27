@@ -33,8 +33,8 @@ var (
 	deserializer                                   runtime.Decoder
 	tag, image                                     string
 	envVarsEmpty, labelsEmpty                      bool
-	k8smemScaled, k8scpuScaled                     int
-	extMem, extCPU, extGPU, k8sMem, k8sCPU, k8sGPU *int
+	k8smemScaled, k8scpuScaled                     int64
+	extMem, extCPU, extGPU, k8sMem, k8sCPU, k8sGPU *int64
 )
 
 func init() {
@@ -44,12 +44,12 @@ func init() {
 }
 
 func main() {
-	extMem = flag.Int("ext_mem", 0, "Maximum node memory size in the external system in bytes.")
-	extCPU = flag.Int("ext_cpu", 0, "Maximum node CPU size in the external system.")
-	extGPU = flag.Int("ext_gpu", 0, "Maximum node GPU amount in the external system.")
-	k8sMem = flag.Int("k8s_mem", 0, "Maximum node memory size in Kubernetes in bytes.")
-	k8sCPU = flag.Int("k8s_cpu", 0, "Maximum node CPU size in Kubernetes.")
-	k8sGPU = flag.Int("k8s_gpu", 0, "Maximum node GPU amount in Kubernetes.")
+	extMem = flag.Int64("ext_mem", 0, "Maximum node memory size in the external system in bytes.")
+	extCPU = flag.Int64("ext_cpu", 0, "Maximum node CPU size in the external system.")
+	extGPU = flag.Int64("ext_gpu", 0, "Maximum node GPU amount in the external system.")
+	k8sMem = flag.Int64("k8s_mem", 0, "Maximum node memory size in Kubernetes in bytes.")
+	k8sCPU = flag.Int64("k8s_cpu", 0, "Maximum node CPU size in Kubernetes.")
+	k8sGPU = flag.Int64("k8s_gpu", 0, "Maximum node GPU amount in Kubernetes.")
 	flag.Parse()
 
 	if flag.Lookup("ext_mem").Value.String() == "0" || flag.Lookup("ext_cpu").Value.String() == "0" ||
@@ -58,8 +58,8 @@ func main() {
 		panic(errors.New("Some command line arguments not set."))
 	}
 
-	k8smemScaled = int(math.Floor((float64(*k8sMem) / 100) * 70))
-	k8scpuScaled = int(math.Floor((float64(*k8sCPU) / 100) * 70))
+	k8smemScaled = int64(math.Floor((float64(*k8sMem) / 100) * 70))
+	k8scpuScaled = int64(math.Floor((float64(*k8sCPU) / 100) * 70))
 
 	http.HandleFunc("/mutate", serveMutateJobs)
 	http.HandleFunc("/health", serveHealth)
@@ -127,12 +127,29 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(job.Spec.Template.Spec.Containers) != 1 {
-		sendResponse(admissionReviewReq, w, nil, true, "sending back response, spec not changed (multiple containers)")
+		sendResponse(admissionReviewReq, w, nil, true,
+			"sending back response, spec not changed (multiple containers)")
 		return
 	}
 
 	if len(job.Spec.Template.Spec.Containers[0].Ports) != 0 {
-		sendResponse(admissionReviewReq, w, nil, true, "sending back response, spec not changed (exposed ports)")
+		sendResponse(admissionReviewReq, w, nil, true,
+			"sending back response, spec not changed (exposed ports)")
+		return
+	}
+
+	move := checkResourcesAvailability(
+		job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
+		job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value(),
+		job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().Value())
+
+	if move == -1 {
+		sendResponse(admissionReviewReq, w, nil, false,
+			"sending back response, resources can not be accommodated anywhere")
+		return
+	} else if move == 0 {
+		sendResponse(admissionReviewReq, w, nil, true,
+			"sending back response, spec not changed (accommodate in K8s)")
 		return
 	}
 
@@ -253,8 +270,48 @@ func generateResponse(admissionReviewReq admissionv1.AdmissionReview, patchesM [
 	return admissionReviewResponse
 }
 
-func checkResourcesAvailability() {
-
+// -1 = fail | 0 = k8s | 1 = ext
+func checkResourcesAvailability(gpur, memr, cpur int64) int {
+	if gpur > 0 {
+		if gpur > *k8sGPU {
+			if gpur > *extGPU || memr > *extMem || cpur > *extCPU {
+				errorLogger.Println("failing, accommodating not possible in any system")
+				return -1
+			} else {
+				infoLogger.Println("moving to external system")
+				return 1
+			}
+		} else {
+			if memr > k8smemScaled || cpur > k8scpuScaled {
+				if gpur > *extGPU || memr > *extMem || cpur > *extCPU {
+					errorLogger.Println("failing, accommodating not possible in any system")
+					return -1
+				}
+				infoLogger.Println("moving to external system")
+				return 1
+			}
+			infoLogger.Println("staying in K8s")
+			return 0
+		}
+	}
+	if memr > k8smemScaled {
+		if memr > *extMem || cpur > *extCPU {
+			errorLogger.Println("failing, accommodating not possible in any system")
+			return -1
+		}
+		infoLogger.Println("moving to external system")
+		return 1
+	}
+	if cpur > k8scpuScaled {
+		if memr > *extMem || cpur > *extCPU {
+			errorLogger.Println("failing, accommodating not possible in any system")
+			return -1
+		}
+		infoLogger.Println("moving to external system")
+		return 1
+	}
+	infoLogger.Println("staying in K8s")
+	return 0
 }
 
 func replacePodSpecItem(path string, value interface{}, patches []map[string]interface{}) []map[string]interface{} {
