@@ -14,7 +14,7 @@ spec:
     spec:
 #      serviceAccountName: k8shpc-sa
       containers:
-        - image: cerit.io/cerit/k8shpc:21-10-2022-1-editable
+        - image: cerit.io/cerit/k8shpc:26-10-2022-editable
           env:
             - name: "TAG"
               value: "v0.4"
@@ -25,12 +25,12 @@ spec:
                 configMapKeyRef:
                   name: k8shpc-mutating-webhook-map
                   key: cpul
-#          readinessProbe:
-#            httpGet:
-#              path: /health
-#              port: 8443
-#            initialDelaySeconds: 3
-#            periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              port: 8443
+              path: /health
+              scheme: HTTPS
+            periodSeconds: 10
           name: k8shpc-mutating-pod
           volumeMounts:
             - name: tls
