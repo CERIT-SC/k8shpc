@@ -120,9 +120,10 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if val, ok := job.Labels["hpctransfer"]; !ok || val != "yes" {
+	val, ok := job.Labels["hpctransfer"]
+	if !ok || (val != "can" && val != "must") {
 		sendHeaderErrorResponse(w, fmt.Sprintf("job is not valid for mutation: label 'hpctransfer' not found "+
-			"or not set to 'yes'"))
+			"or not set to one of ['can','must']"))
 		return
 	}
 
@@ -138,19 +139,21 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	move := checkResourcesAvailability(
-		job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
-		job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value(),
-		job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().Value())
+	if val == "can" {
+		move := checkResourcesAvailability(
+			job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
+			job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value(),
+			job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().Value())
 
-	if move == -1 {
-		sendResponse(admissionReviewReq, w, nil, false,
-			"sending back response, resources can not be accommodated anywhere")
-		return
-	} else if move == 0 {
-		sendResponse(admissionReviewReq, w, nil, true,
-			"sending back response, spec not changed (accommodate in K8s)")
-		return
+		if move == -1 {
+			sendResponse(admissionReviewReq, w, nil, false,
+				"sending back response, resources can not be accommodated anywhere")
+			return
+		} else if move == 0 {
+			sendResponse(admissionReviewReq, w, nil, true,
+				"sending back response, spec not changed (accommodate in K8s)")
+			return
+		}
 	}
 
 	var patchesM []byte
