@@ -35,7 +35,11 @@ fi
 
 MEML="$[MEML/1073741824+1]gb" # to GB
 
-envsubst '$COMMAND $CONTAINER $ssh_host $ssh_key $MEML $CPUL' < /srv/run-qsub.sh > /tmp/run-qsub.sh
+unset COMMAND; for i in `seq 0 20`; do t=CMD_$i; [[ ! -z ${!t} ]] && COMMAND=(${COMMAND[*]} "'${!t}'"); done
+
+CMD=${COMMAND[*]}
+
+envsubst '$CMD $CONTAINER $ssh_host $ssh_key $MEML $CPUL' < /srv/run-qsub.sh > /tmp/run-qsub.sh
 
 jobid=`/usr/bin/qsub /tmp/run-qsub.sh`
 
@@ -49,7 +53,5 @@ while true; do
 done
 
 /usr/bin/kubectl delete -f /tmp/service.yaml -n ${NAMESPACE}
-
-echo $exitc
 
 exit $exitc
