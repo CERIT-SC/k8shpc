@@ -7,27 +7,26 @@ fi
 
 export ssh_key=`kubectl get secret -n ${NAMESPACE} sshkey -o jsonpath='{.data.ssh-privatekey}' | base64 -d`
 
-if [ -z $ssh_key ]; then
+if [ -z "$ssh_key" ]; then
    echo "Failed to get SSH private key from sshkey secret. Exiting."
    exit 1;
 fi
-
-kubectl get secret -n ${NAMESPACE} sshkey -o jsonpath='{.data.ssh-publickey}' | base64 -d > /home/funnelworker/.ssh/authorized_keys && chmod 0600 /home/funnelworker/.ssh/authorized_keys 
-
-set | grep 'PROXY\|KUBERNETES' | sed -e 's/^/export /' >> /home/funnelworker/.bashrc; 
-/usr/sbin/sshd
 
 if echo ${POD_NAME} | grep -q -e '-.....$'; then
     export POD_NAME=`echo ${POD_NAME} | sed -e 's/-.....$//'`
 fi
 
-envsubst < /srv/service.yaml > /tmp/service.yaml
+pvcvar=${!PVC_*}
 
-/usr/bin/kubectl create -f /tmp/service.yaml -n ${NAMESPACE}
+export pvc=`echo $pvcvar | sed -e 's/^PVC_//' -e 's/_/-/g'`
 
-export ssh_key=`cat /home/funnelworker/.ssh/id_rsa`
+export mnt=${!pvcvar}
 
-export ssh_host=$POD_NAME.dyn.cloud.e-infra.cz
+export exppodname="export-$pvc"
+
+envsubst '$exppodname $mnt $pvc' < /srv/ssh-proxy.yaml | kubectl create -f - -n ${NAMESPACE} && sleep 10
+
+export ssh_host=${exppodname}.dyn.cloud.e-infra.cz
 
 if [ -z $CPUL ]; then
    CPUL=$CPUR
@@ -60,7 +59,5 @@ while true; do
     fi
     sleep 5;
 done
-
-/usr/bin/kubectl delete -f /tmp/service.yaml -n ${NAMESPACE}
 
 exit $exitc
