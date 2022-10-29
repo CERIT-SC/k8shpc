@@ -1,11 +1,15 @@
 #!/bin/bash
 
-if kubectl get secret -n ${NAMESPACE} sshkey &> /dev/null; then
-  export ssh_key=`kubectl get secret -n ${NAMESPACE} sshkey -o jsonpath='{.data.ssh-privatekey}' | base64 -d`
-else 
+if ! kubectl get secret -n ${NAMESPACE} sshkey &> /dev/null; then
   echo -e "\n" | ssh-keygen -q -N ''
   kubectl create secret generic sshkey --from-file=ssh-privatekey=/home/funnelworker/.ssh/id_rsa --from-file=ssh-publickey=/home/funnelworker/.ssh/id_rsa.pub -n ${NAMESPACE}
-  export ssh_key=`cat /home/funnelworker/.ssh/id_rsa`
+fi
+
+export ssh_key=`kubectl get secret -n ${NAMESPACE} sshkey -o jsonpath='{.data.ssh-privatekey}' | base64 -d`
+
+if [ -z $ssh_key ]; then
+   echo "Failed to get SSH private key from sshkey secret. Exiting."
+   exit 1;
 fi
 
 kubectl get secret -n ${NAMESPACE} sshkey -o jsonpath='{.data.ssh-publickey}' | base64 -d > /home/funnelworker/.ssh/authorized_keys && chmod 0600 /home/funnelworker/.ssh/authorized_keys 
