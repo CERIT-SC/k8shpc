@@ -1,6 +1,6 @@
 FROM debian:11
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive  apt-get -y --no-install-recommends install gettext-base procps openssh-server vim bind9-host wget tzdata locales libgssapi3-heimdal libedit2 libpython3.9 libtcl8.6 libtk8.6 python krb5-user openssh-client && wget http://repo.cerit-sc.cz/debian/pool/main/libpbspro_19.0.0-28%2Bdeb11_amd64.deb && dpkg -i libpbspro_19.0.0-28+deb11_amd64.deb && wget http://repo.cerit-sc.cz/debian/pool/main/pbspro-client_19.0.0-28%2Bdeb11_amd64.deb && dpkg -i pbspro-client_19.0.0-28+deb11_amd64.deb && rm -f *.deb && apt-get clean && rm -rf  /var/lib/apt/lists/* && rm -f /etc/pbs.conf && chown -R 1000:1000 /etc/ssh/*;
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive  apt-get -y --no-install-recommends install ed gettext-base procps openssh-server vim bind9-host wget tzdata locales libgssapi3-heimdal libedit2 libpython3.9 libtcl8.6 libtk8.6 python krb5-user openssh-client && wget http://repo.cerit-sc.cz/debian/pool/main/libpbspro_19.0.0-28%2Bdeb11_amd64.deb && dpkg -i libpbspro_19.0.0-28+deb11_amd64.deb && wget http://repo.cerit-sc.cz/debian/pool/main/pbspro-client_19.0.0-28%2Bdeb11_amd64.deb && dpkg -i pbspro-client_19.0.0-28+deb11_amd64.deb && rm -f *.deb && apt-get clean && rm -rf  /var/lib/apt/lists/* && rm -f /etc/pbs.conf && chown -R 1000:1000 /etc/ssh/*;
 
 RUN ln -fs /usr/share/zoneinfo/Europe/Prague /etc/localtime && dpkg-reconfigure --frontend noninteractive tzdata && sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen
 
