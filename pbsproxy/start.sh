@@ -24,7 +24,22 @@ export mnt=${!pvcvar}
 
 export exppodname="export-$pvc"
 
-envsubst '$exppodname $mnt $pvc' < /srv/ssh-proxy.yaml | kubectl create -f - -n ${NAMESPACE} && sleep 10
+export finalizer="cerit.io/${POD_NAME}"
+
+export EDITOR=ed
+
+while true; do 
+   err=`echo -e "g/^metadata:/\ng/finalizers:/\na\n  finalizers:\n  - $finalizer\n.\nw\nq\n" | kubectl edit deployment/$exppodname -n ${NAMESPACE} 2>&1`
+   if [ $? == 0 ]; then
+     break;
+   fi
+   if echo $err | grep -q NotFound; then 
+     break;
+   fi
+   sleep 1;
+done   
+
+envsubst '$exppodname $mnt $pvc $finalizer' < /srv/ssh-proxy.yaml | kubectl create -f - -n ${NAMESPACE} && sleep 10
 
 export ssh_host=${exppodname}.dyn.cloud.e-infra.cz
 
@@ -59,5 +74,17 @@ while true; do
     fi
     sleep 5;
 done
+
+finalizer1=`echo $finalizer | sed -e 's/\//\\\\/g' -e 's/\./\\./g'`
+while true; do 
+   err=`echo -e "g/$finalizer1/d\nw\nq\n" | kubectl edit deployment/$exppodname -n ${NAMESPACE} 2>&1`
+   if [ $? == 0 ]; then
+     break;
+   fi
+   if echo $err | grep NotFound; then
+     break;
+   fi
+   sleep 1;
+done   
 
 exit $exitc
