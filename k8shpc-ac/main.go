@@ -16,6 +16,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -35,12 +36,35 @@ var (
 	envVarsEmpty, labelsEmpty                      bool
 	k8smemScaled, k8scpuScaled                     int64
 	extMem, extCPU, extGPU, k8sMem, k8sCPU, k8sGPU *int64
+	//k8sGPUAvail                                    chan int64
 )
 
 func init() {
 	infoLogger = log.New(os.Stderr, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	errorLogger = log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 	deserializer = serializer.NewCodecFactory(runtime.NewScheme()).UniversalDeserializer()
+
+	//k8sGPUAvail = make(chan int64)
+	//go func() {
+	//	config, err := rest.InClusterConfig()
+	//	if err != nil {
+	//		panic(err.Error())
+	//	}
+	//	cs, err := kubernetes.NewForConfig(config)
+	//	if err != nil {
+	//		panic(err.Error())
+	//	}
+	//	for {
+	//		var gAvail int64 = 0
+	//		nodes, _ := cs.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	//		for _, node := range nodes.Items {
+	//			al := node.Status.Allocatable.Name("nvidia.com/gpu", resource.DecimalSI).Value()
+	//			gAvail += al
+	//		}
+	//		k8sGPUAvail <- gAvail
+	//		time.Sleep(10 * time.Second)
+	//	}
+	//}()
 }
 
 func main() {
@@ -139,6 +163,7 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// can, must, cooperative
 	if val == "can" {
 		move := checkResourcesAvailability(
 			job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
@@ -189,12 +214,14 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	patches = addEnvVarFromField("CPUL", "limits.cpu", true, patches)
 	patches = addEnvVarFromField("MEMR", "requests.memory", true, patches)
 	patches = addEnvVarFromField("MEML", "limits.memory", true, patches)
+	gpuR := job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", resource.DecimalSI)
+	patches = addEnvVar("GPUR", gpuR.String(), patches)
 
 	labelsEmpty = len(job.Spec.Template.Labels) == 0
 	patches = addLabelToPod("app", job.Name, patches)
 
 	for i, arg := range job.Spec.Template.Spec.Containers[0].Args {
-		patches = addEnvVar("ARG_"+strconv.Itoa(i), arg, patches)
+		patches = addEnvVar(fmt.Sprintf("ARG_%02d", i), arg, patches)
 	}
 
 	vmp := getPVCMountPath(job)
@@ -275,8 +302,9 @@ func generateResponse(admissionReviewReq admissionv1.AdmissionReview, patchesM [
 
 // -1 = fail | 0 = k8s | 1 = ext
 func checkResourcesAvailability(gpur, memr, cpur int64) int {
+	//kga := <-k8sGPUAvail
 	if gpur > 0 {
-		if gpur > *k8sGPU {
+		if gpur > *k8sGPU { // || gpur > kga
 			if gpur > *extGPU || memr > *extMem || cpur > *extCPU {
 				errorLogger.Println("failing, accommodating not possible in any system")
 				return -1
@@ -403,7 +431,13 @@ func getPVCMountPath(job batchv1.Job) map[string]string {
 	volumeMountpath := map[string]string{}
 	for _, vm := range volumeMounts {
 		if pvcnames[vm.Name] != "" {
-			name := fmt.Sprintf("PVC_%s", strings.ReplaceAll(pvcnames[vm.Name], "-", "_"))
+			i := 0
+			pvcname := strings.ReplaceAll(pvcnames[vm.Name], "-", "_")
+			name := fmt.Sprintf("PVC_%02d_%s", i, pvcname)
+			for volumeMountpath[name] != "" {
+				i += 1
+				name = fmt.Sprintf("PVC_%02d_%s", i, pvcname)
+			}
 			volumeMountpath[name] = vm.MountPath
 		}
 	}
