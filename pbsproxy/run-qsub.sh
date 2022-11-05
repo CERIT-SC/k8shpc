@@ -10,7 +10,9 @@ chmod 0600 /storage/brno12-cerit/home/funnelworker/id_rsa.$$
 
 image=$CONTAINER
 
-mounts=('/mnt')
+mounts="$MNT"
+
+
 
 cache='/storage/brno12-cerit/home/funnelworker/cache'
 sif=`echo $image | sed -e 's/\//-/g'`
@@ -44,6 +46,8 @@ for i in $mounts; do
   binds=(${binds[*]} '--bind' "$j:$i")
   j=$[j+1]
 done
+
+$ENVS
 
 singularity run ${binds[*]} -i "$cache/$sif" $CMD
 

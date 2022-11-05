@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -o zuphux.cerit-sc.cz:logs/${PBS_JOBID}.stdout
 #PBS -e zuphux.cerit-sc.cz:logs/${PBS_JOBID}.stderr
-#PBS -l select=1:ncpus=$CPUL:mem=$MEML:ngpus=$GPUL:scratch_ssd=20gb 
+#PBS -l select=1:ncpus=$CPUL:mem=$MEML:ngpus=$GPUR:scratch_ssd=20gb 
 #PBS -q gpu
 
 sshkey="$ssh_key"
@@ -11,7 +11,7 @@ chmod 0600 /storage/brno12-cerit/home/funnelworker/id_rsa.$$
 
 image=$CONTAINER
 
-mounts=('/mnt')
+mounts="$MNT"
 
 cache='/storage/brno12-cerit/home/funnelworker/cache'
 sif=`echo $image | sed -e 's/\//-/g'`
@@ -45,6 +45,8 @@ for i in $mounts; do
   binds=(${binds[*]} '--bind' "$j:$i")
   j=$[j+1]
 done
+
+$ENVS
 
 singularity run ${binds[*]} -i "$cache/$sif" $CMD
 
