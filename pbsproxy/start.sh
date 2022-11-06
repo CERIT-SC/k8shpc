@@ -94,7 +94,7 @@ CMD=${COMMAND[*]}
 
 MNT=`/srv/genproxy.py --genmnt`
 
-if [ -z $GPUR ]; then
+if [ -z $GPUR -o $GPUR == 0 ]; then
    envsubst '$ENVS $CMD $CONTAINER $MNT $ssh_host $ssh_key $MEML $CPUL' < /srv/run-qsub.sh > /tmp/run-qsub.sh
 else
    envsubst '$ENVS $CMD $CONTAINER $MNT $ssh_host $ssh_key $MEML $CPUL $GPUR' < /srv/run-qsub-gpu.sh > /tmp/run-qsub.sh
