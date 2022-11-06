@@ -24,6 +24,8 @@ spec:
     app: {exppodname}
   externalTrafficPolicy: Local
 '''
+  if finalizer != '':
+    finalizer = "\n  - "+finalizer
   return svc.format(exppodname=name, net=addresspool, finalizer=finalizer)
 
 def gen_deployment(name, finalizer, volmounts, volumes):
@@ -46,7 +48,7 @@ spec:
       - name: ssh-proxy
         command:
         - /srv/start-sshproxy.sh
-        image: cerit.io/cerit/geant-proxy:v0.5
+        image: cerit.io/cerit/geant-proxy:v0.6
         imagePullPolicy: IfNotPresent
         securityContext:
           runAsUser: 1000

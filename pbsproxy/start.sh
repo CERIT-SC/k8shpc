@@ -111,9 +111,9 @@ while true; do
     sleep 5;
 done
 
-finalizer1=`echo $finalizer | sed -e 's/\//\\\\/g' -e 's/\./\\./g'`
+export finalizer=$(echo $finalizer | sed -e 's/\//\\\//g' -e 's/\./\\./g')
 while true; do 
-   err=`echo -e "g/$finalizer1/d\nw\nq\n" | kubectl edit deployment/$exppodname -n ${NAMESPACE} 2>&1`
+   err=`echo -e "g/${finalizer1}/d\nw\nq\n" | kubectl edit deployment/$exppodname -n ${NAMESPACE} 2>&1`
    if [ $? == 0 ]; then
      break;
    fi
@@ -128,7 +128,7 @@ if ! kubectl get deployment/$exppodname -n ${NAMESPACE} -o yaml | grep finalizer
 fi
 
 while true; do 
-   err=`echo -e "g/$finalizer1/d\nw\nq\n" | kubectl edit service/$exppodname -n ${NAMESPACE} 2>&1`
+   err=`echo -e "g/${finalizer1}/d\nw\nq\n" | kubectl edit service/$exppodname -n ${NAMESPACE} 2>&1`
    if [ $? == 0 ]; then
      break;
    fi
