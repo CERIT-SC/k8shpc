@@ -223,6 +223,9 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	for i, arg := range job.Spec.Template.Spec.Containers[0].Args {
 		patches = addEnvVar(fmt.Sprintf("ARG_%02d", i), arg, patches)
 	}
+	for _, envVar := range job.Spec.Template.Spec.Containers[0].Env {
+		patches = addEnvVar(fmt.Sprintf("ENV_%s", envVar.Name), envVar.Value, patches)
+	}
 
 	vmp := getPVCMountPath(job)
 	for pvcname, mp := range vmp {
