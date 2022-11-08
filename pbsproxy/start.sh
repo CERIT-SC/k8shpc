@@ -70,6 +70,11 @@ done
 
 export ssh_host=${exppodname}.dyn.cloud.e-infra.cz
 
+while ! host $ssh_host &> /dev/null; do
+   sleep 5;
+   echo "Waiting for ssh proxy to be alive.."
+done
+
 if [ -z $CPUL ]; then
    CPUL=$CPUR
 fi
