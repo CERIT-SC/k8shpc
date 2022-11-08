@@ -90,9 +90,9 @@ for i in `seq -w 0 20`; do t=ARG_$i; [[ ! -z ${!t} ]] && COMMAND=(${COMMAND[*]} 
 
 unset ENVS; for i in `set | grep '^ENV_'`; do j=`echo $i | sed -e 's/=.*//'`; t=${!j}; n=${j#ENV_}; ENVS="${ENVS}export $n='$t'\n"; done
 
-CMD=${COMMAND[*]}
+export CMD=${COMMAND[*]}
 
-MNT=`/srv/genproxy.py --genmnt`
+export MNT=`/srv/genproxy.py --genmnt`
 
 if [ -z $GPUR -o $GPUR == 0 ]; then
    envsubst '$ENVS $CMD $CONTAINER $MNT $ssh_host $ssh_key $MEML $CPUL' < /srv/run-qsub.sh > /tmp/run-qsub.sh
@@ -111,7 +111,7 @@ while true; do
     sleep 5;
 done
 
-export finalizer=$(echo $finalizer | sed -e 's/\//\\\//g' -e 's/\./\\./g')
+export finalizer1=$(echo $finalizer | sed -e 's/\//\\\//g' -e 's/\./\\./g')
 while true; do 
    err=`echo -e "g/${finalizer1}/d\nw\nq\n" | kubectl edit deployment/$exppodname -n ${NAMESPACE} 2>&1`
    if [ $? == 0 ]; then

@@ -53,6 +53,9 @@ spec:
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
+        env:
+        - name: NAMESPACE
+          value: {namespace}
         resources:
           limits:
             cpu: 1
@@ -62,7 +65,7 @@ spec:
 '''
   if finalizer != '':
     finalizer = "\n  - "+finalizer
-  deployment = deployment.format(exppodname=name, finalizer=finalizer)
+  deployment = deployment.format(exppodname=name, finalizer=finalizer, namespace=os.environ.get("NAMESPACE"))
   if volmounts and volumes:
         deployment = deployment+"        volumeMounts:\n"+volmounts+"      volumes:\n"+volumes
   return deployment
