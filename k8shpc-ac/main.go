@@ -17,14 +17,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"time"
-
 	"log"
 	"math"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -66,7 +65,8 @@ func main() {
 	nodeMaxCPU = make(chan int64)
 	nodeMaxGPU = make(chan int64)
 	go queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU)
-	infoLogger.Println("Starting queryCurrentK8sResources go routine.")
+	infoLogger.Println("Starting queryCurrentK8sResources go routine, sleeping 10s.")
+	time.Sleep(10 * time.Second)
 
 	http.HandleFunc("/mutate", serveMutateJobs)
 	http.HandleFunc("/health", serveHealth)
@@ -187,8 +187,8 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 		tag = ""
 	}
 
-	//replaceCommand := []string{"/bin/bash", "-c", "/srv/start.sh"}
-	replaceCommand := []string{"/bin/bash", "-c", "sleep infinity"}
+	replaceCommand := []string{"/bin/bash", "-c", "/srv/start.sh"}
+	//replaceCommand := []string{"/bin/bash", "-c", "sleep infinity"}
 
 	patches = replacePodSpecItem("containers/0/image", fmt.Sprintf("%s:%s", image, tag), patches)
 	patches = replacePodSpecItem("containers/0/command", replaceCommand, patches)
@@ -349,16 +349,17 @@ func checkCurrentResources(gpur, memr, cpur int64) bool {
 	infoLogger.Println(fmt.Sprintf("Current max GPU %d, max CPU %d, max MEM %d.",
 		maxFreeGPU, maxFreeCPU, maxFreeMem))
 
-	if gpur > 0 && gpur > maxFreeGPU { // GPU request cannot be accomodated in K8s right now
+	if gpur > 0 && gpur > maxFreeGPU { // GPU request cannot be accommodated in K8s right now
 		infoLogger.Println(fmt.Sprintf(
 			"GPU request(%d) larger than available(%d); moving to external system", gpur, maxFreeGPU))
 		return true
 	}
 	if memr > maxFreeMem {
-		rG := memr / 1024 / 1024 / 1024
+		rM := memr / 1024 / 1024
 		maxG := maxFreeMem / 1024 / 1024 / 1024
 		infoLogger.Println(fmt.Sprintf(
-			"MEM request(%d GB) larger than available MEM (%d GB); moving to external system", rG, maxG))
+			"MEM request(%d MB, %d GB) larger than available MEM (%d GB); moving to external system",
+			rM, rM/1024, maxG))
 		return true
 	}
 	if cpur > maxFreeCPU {
@@ -470,6 +471,7 @@ func getPVCMountPath(job batchv1.Job) map[string]string {
 }
 
 func queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU chan int64) {
+	defer func() { fmt.Println("Routine is gone") }()
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		panic(err.Error())
@@ -481,14 +483,20 @@ func queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU chan int64) {
 
 	var nodemaxcpu, nodemaxmem, nodemaxgpu, reqcpu, reqmem, reqgpu int64
 	for {
-		nodes, _ := cs.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		nodes, err := cs.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
 		nodemaxcpu = 0
 		nodemaxmem = 0
 		nodemaxgpu = 0
 		for _, node := range nodes.Items {
-			currPods, _ := cs.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
+			currPods, err := cs.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
 				FieldSelector: "spec.nodeName=" + node.Name,
 			})
+			if err != nil {
+				panic(err.Error())
+			}
 			reqcpu = 0
 			reqmem = 0
 			reqgpu = 0
@@ -515,6 +523,5 @@ func queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU chan int64) {
 		nodeMaxGPU <- nodemaxgpu
 		nodeMaxCPU <- nodemaxcpu
 		nodeMaxMem <- nodemaxmem
-		time.Sleep(10 * time.Second)
 	}
 }
