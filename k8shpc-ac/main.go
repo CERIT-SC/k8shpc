@@ -1,12 +1,7 @@
 package main
 
-// Things needed for webhook
-// 1. Webhook Configuration (YAML)
-// 2. Contacting webhook (URL/SERVICE)
-// 3. Webhook itself
-// 4. Webhook Server
-
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -20,6 +15,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
+	"time"
+
 	"log"
 	"math"
 	"net/http"
@@ -36,35 +36,13 @@ var (
 	envVarsEmpty, labelsEmpty                      bool
 	k8smemScaled, k8scpuScaled                     int64
 	extMem, extCPU, extGPU, k8sMem, k8sCPU, k8sGPU *int64
-	//k8sGPUAvail                                    chan int64
+	nodeMaxMem, nodeMaxCPU, nodeMaxGPU             chan int64
 )
 
 func init() {
 	infoLogger = log.New(os.Stderr, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	errorLogger = log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 	deserializer = serializer.NewCodecFactory(runtime.NewScheme()).UniversalDeserializer()
-
-	//k8sGPUAvail = make(chan int64)
-	//go func() {
-	//	config, err := rest.InClusterConfig()
-	//	if err != nil {
-	//		panic(err.Error())
-	//	}
-	//	cs, err := kubernetes.NewForConfig(config)
-	//	if err != nil {
-	//		panic(err.Error())
-	//	}
-	//	for {
-	//		var gAvail int64 = 0
-	//		nodes, _ := cs.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	//		for _, node := range nodes.Items {
-	//			al := node.Status.Allocatable.Name("nvidia.com/gpu", resource.DecimalSI).Value()
-	//			gAvail += al
-	//		}
-	//		k8sGPUAvail <- gAvail
-	//		time.Sleep(10 * time.Second)
-	//	}
-	//}()
 }
 
 func main() {
@@ -85,6 +63,11 @@ func main() {
 	k8smemScaled = int64(math.Floor((float64(*k8sMem) / 100) * 70))
 	k8scpuScaled = int64(math.Floor((float64(*k8sCPU) / 100) * 70))
 
+	nodeMaxMem = make(chan int64)
+	nodeMaxCPU = make(chan int64)
+	nodeMaxGPU = make(chan int64)
+	go queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU)
+
 	http.HandleFunc("/mutate", serveMutateJobs)
 	http.HandleFunc("/health", serveHealth)
 
@@ -103,6 +86,7 @@ func main() {
 		errorLogger.Println("Can't serve TLS server, exiting.")
 		panic(err)
 	}
+
 }
 
 func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
@@ -164,8 +148,8 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// can, must, cooperative
-	if val == "can" {
-		move := checkResourcesAvailability(
+	if val == "can" { // can checks cluster maximum
+		move := checkMaxResources(
 			job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
 			job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value(),
 			job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().Value())
@@ -176,7 +160,17 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 			return
 		} else if move == 0 {
 			sendResponse(admissionReviewReq, w, nil, true,
-				"sending back response, spec not changed (accommodate in K8s)")
+				"sending back response, spec not changed (possible to accommodate in K8s)")
+			return
+		}
+	} else if val == "cooperative" { // cooperative checks currently available
+		move := checkCurrentResources(job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
+			job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value(),
+			job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().Value())
+
+		if !move {
+			sendResponse(admissionReviewReq, w, nil, true,
+				"sending back response, spec not changed (possible to accommodate in K8s)")
 			return
 		}
 	}
@@ -304,8 +298,7 @@ func generateResponse(admissionReviewReq admissionv1.AdmissionReview, patchesM [
 }
 
 // -1 = fail | 0 = k8s | 1 = ext
-func checkResourcesAvailability(gpur, memr, cpur int64) int {
-	//kga := <-k8sGPUAvail
+func checkMaxResources(gpur, memr, cpur int64) int {
 	if gpur > 0 {
 		if gpur > *k8sGPU { // || gpur > kga
 			if gpur > *extGPU || memr > *extMem || cpur > *extCPU {
@@ -346,6 +339,33 @@ func checkResourcesAvailability(gpur, memr, cpur int64) int {
 	}
 	infoLogger.Println("staying in K8s")
 	return 0
+}
+
+// true = ext | false = K8s
+func checkCurrentResources(gpur, memr, cpur int64) bool {
+	maxFreeGPU := <-nodeMaxGPU
+	maxFreeCPU := <-nodeMaxCPU
+	maxFreeMem := <-nodeMaxMem
+
+	if gpur > 0 && gpur > maxFreeGPU { // GPU request cannot be accomodated in K8s right now
+		infoLogger.Println(fmt.Sprintf(
+			"GPU request(%d) larger than available(%d); moving to external system", gpur, maxFreeGPU))
+		return true
+	}
+	if memr > maxFreeMem {
+		rG := memr / 1024 / 1024 / 1024
+		maxG := maxFreeMem / 1024 / 1024 / 1024
+		infoLogger.Println(fmt.Sprintf(
+			"MEM request(%d GB) larger than available MEM (%d GB); moving to external system", rG, maxG))
+		return true
+	}
+	if cpur > maxFreeCPU {
+		infoLogger.Println(fmt.Sprintf(
+			"CPU request(%d) larger than available CPU (%d); moving to external system", cpur, maxFreeCPU))
+		return true
+	}
+	infoLogger.Println("staying in K8s")
+	return false
 }
 
 func replacePodSpecItem(path string, value interface{}, patches []map[string]interface{}) []map[string]interface{} {
@@ -445,4 +465,61 @@ func getPVCMountPath(job batchv1.Job) map[string]string {
 		}
 	}
 	return volumeMountpath
+}
+
+func queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU chan int64) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		panic(err.Error())
+	}
+	cs, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+	mc, err := metrics.NewForConfig(config)
+
+	var nodemaxcpu, nodemaxmem, nodemaxgpu, reqcpu, reqmem, reqgpu int64
+	for {
+		nodes, _ := cs.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		nodemaxcpu = 0
+		nodemaxmem = 0
+		nodemaxgpu = 0
+		for _, node := range nodes.Items {
+			nodeMetrics, err := mc.MetricsV1beta1().NodeMetricses().Get(context.TODO(), node.Name, metav1.GetOptions{})
+			if err != nil {
+				return
+			}
+			fmt.Println(nodeMetrics.Name)
+			currPods, err := cs.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
+				FieldSelector: "spec.nodeName=" + node.Name,
+			})
+
+			reqcpu = 0
+			reqmem = 0
+			reqgpu = 0
+			for _, pod := range currPods.Items {
+				for _, container := range pod.Spec.Containers {
+					reqcpu += container.Resources.Requests.Cpu().Value()
+					reqmem += container.Resources.Requests.Memory().Value()
+					reqgpu += container.Resources.Requests.Name("nvidia.com/gpu", resource.DecimalSI).Value()
+				}
+			}
+			freecpu := node.Status.Allocatable.Cpu().Value() - reqcpu
+			freemem := node.Status.Allocatable.Memory().Value() - reqmem
+			freegpu := node.Status.Allocatable.Name("nvidia.com/gpu", resource.DecimalSI).Value() - reqgpu
+			if freecpu > nodemaxcpu {
+				nodemaxcpu = freecpu
+			}
+			if freemem > nodemaxmem {
+				nodemaxmem = freemem
+			}
+			if freegpu > nodemaxgpu {
+				nodemaxgpu = freegpu
+			}
+		}
+		nodeMaxGPU <- nodemaxgpu
+		nodeMaxCPU <- nodemaxcpu
+		nodeMaxMem <- nodemaxmem
+		time.Sleep(10 * time.Second)
+	}
 }
