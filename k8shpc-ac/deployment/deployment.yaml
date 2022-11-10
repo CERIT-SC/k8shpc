@@ -14,7 +14,7 @@ spec:
     spec:
 #      serviceAccountName: k8shpc-sa
       containers:
-        - image: cerit.io/cerit/k8shpc:10-11-2022-editable
+        - image: cerit.io/cerit/k8shpc:10-11-2022-1-editable
           command:
             - "/bin/sh"
             - "-c"

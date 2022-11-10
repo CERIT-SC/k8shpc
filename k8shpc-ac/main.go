@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 	"time"
 
 	"log"
@@ -67,6 +66,7 @@ func main() {
 	nodeMaxCPU = make(chan int64)
 	nodeMaxGPU = make(chan int64)
 	go queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU)
+	infoLogger.Println("Starting queryCurrentK8sResources go routine.")
 
 	http.HandleFunc("/mutate", serveMutateJobs)
 	http.HandleFunc("/health", serveHealth)
@@ -129,7 +129,7 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	val, ok := job.Labels["hpctransfer"]
-	if !ok || (val != "can" && val != "must") {
+	if !ok || (val != "can" && val != "must" && val != "cooperative") {
 		sendHeaderErrorResponse(w, fmt.Sprintf("job is not valid for mutation: label 'hpctransfer' not found "+
 			"or not set to one of ['can','must']"))
 		return
@@ -346,6 +346,8 @@ func checkCurrentResources(gpur, memr, cpur int64) bool {
 	maxFreeGPU := <-nodeMaxGPU
 	maxFreeCPU := <-nodeMaxCPU
 	maxFreeMem := <-nodeMaxMem
+	infoLogger.Println(fmt.Sprintf("Current max GPU %d, max CPU %d, max MEM %d.",
+		maxFreeGPU, maxFreeCPU, maxFreeMem))
 
 	if gpur > 0 && gpur > maxFreeGPU { // GPU request cannot be accomodated in K8s right now
 		infoLogger.Println(fmt.Sprintf(
@@ -476,7 +478,6 @@ func queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU chan int64) {
 	if err != nil {
 		panic(err.Error())
 	}
-	mc, err := metrics.NewForConfig(config)
 
 	var nodemaxcpu, nodemaxmem, nodemaxgpu, reqcpu, reqmem, reqgpu int64
 	for {
@@ -485,15 +486,9 @@ func queryCurrentK8sResources(nodeMaxMem, nodeMaxCPU, nodeMaxGPU chan int64) {
 		nodemaxmem = 0
 		nodemaxgpu = 0
 		for _, node := range nodes.Items {
-			nodeMetrics, err := mc.MetricsV1beta1().NodeMetricses().Get(context.TODO(), node.Name, metav1.GetOptions{})
-			if err != nil {
-				return
-			}
-			fmt.Println(nodeMetrics.Name)
-			currPods, err := cs.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
+			currPods, _ := cs.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
 				FieldSelector: "spec.nodeName=" + node.Name,
 			})
-
 			reqcpu = 0
 			reqmem = 0
 			reqgpu = 0
