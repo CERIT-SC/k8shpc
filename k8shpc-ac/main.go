@@ -193,9 +193,22 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	patches = replacePodSpecItem("containers/0/image", fmt.Sprintf("%s:%s", image, tag), patches)
 	patches = replacePodSpecItem("containers/0/command", replaceCommand, patches)
 	patches = replacePodSpecItem("automountServiceAccountToken", true, patches)
+	patches = replacePodSpecItem("containers/0/resources/limits/cpu", "100m", patches)
+	patches = replacePodSpecItem("containers/0/resources/requests/cpu", "100m", patches)
+	patches = replacePodSpecItem("containers/0/resources/limits/memory", "512Mi", patches)
+	patches = replacePodSpecItem("containers/0/resources/requests/memory", "512Mi", patches)
 
 	envVarsEmpty = len(job.Spec.Template.Spec.Containers[0].Env) == 0
-
+	for i, arg := range job.Spec.Template.Spec.Containers[0].Args {
+		patches = addEnvVar(fmt.Sprintf("ARG_%02d", i), arg, patches)
+	}
+	for _, envVar := range job.Spec.Template.Spec.Containers[0].Env {
+		patches = addEnvVar(fmt.Sprintf("ENV_%s", envVar.Name), envVar.Value, patches)
+	}
+	vmp := getPVCMountPath(job)
+	for pvcname, mp := range vmp {
+		patches = addEnvVar(pvcname, mp, patches)
+	}
 	for i, cmd := range job.Spec.Template.Spec.Containers[0].Command {
 		patches = addEnvVar("CMD_"+strconv.Itoa(i), cmd, patches)
 	}
@@ -203,7 +216,6 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 
 	patches = addEnvVarFromField("NAMESPACE", "metadata.namespace", false, patches)
 	patches = addEnvVarFromField("POD_NAME", "metadata.name", false, patches)
-
 	patches = addEnvVarFromField("CPUR", "requests.cpu", true, patches)
 	patches = addEnvVarFromField("CPUL", "limits.cpu", true, patches)
 	patches = addEnvVarFromField("MEMR", "requests.memory", true, patches)
@@ -213,18 +225,6 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 
 	labelsEmpty = len(job.Spec.Template.Labels) == 0
 	patches = addLabelToPod("app", job.Name, patches)
-
-	for i, arg := range job.Spec.Template.Spec.Containers[0].Args {
-		patches = addEnvVar(fmt.Sprintf("ARG_%02d", i), arg, patches)
-	}
-	for _, envVar := range job.Spec.Template.Spec.Containers[0].Env {
-		patches = addEnvVar(fmt.Sprintf("ENV_%s", envVar.Name), envVar.Value, patches)
-	}
-
-	vmp := getPVCMountPath(job)
-	for pvcname, mp := range vmp {
-		patches = addEnvVar(pvcname, mp, patches)
-	}
 
 	patchesM, err = json.Marshal(patches)
 	if err != nil {
