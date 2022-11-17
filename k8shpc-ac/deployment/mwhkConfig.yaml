@@ -18,7 +18,7 @@ webhooks:
       matchExpressions:
         - key: hpctransfer
           operator: In
-          values: ["can", "must"]
+          values: ["can", "must", "cooperative"]
 #      matchLabels:
 #        hpctransfer: "yes"
     rules:
