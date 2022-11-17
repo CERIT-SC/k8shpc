@@ -73,7 +73,7 @@ export ssh_host=${exppodname}.dyn.cloud.e-infra.cz
 while ! host $ssh_host &> /dev/null; do
    sleep 5;
    echo "Waiting for ssh proxy to be alive.."
-done
+done   
 
 if [ -z $CPUL ]; then
    CPUL=$CPUR
@@ -107,6 +107,8 @@ fi
 
 jobid=`/usr/bin/qsub /tmp/run-qsub.sh`
 
+echo "Submited task $jobid, waiting for finish."
+
 while true; do
     state=`qstat -x -f $jobid | grep job_state | sed -e 's/.*= //'`
     if [ $state == 'F' -o $state = 'E' ]; then
@@ -115,6 +117,8 @@ while true; do
     fi
     sleep 5;
 done
+
+echo "Task finished with exit code $exitc. Cleaning up."
 
 export finalizer1=$(echo $finalizer | sed -e 's/\//\\\//g' -e 's/\./\\./g')
 while true; do 

@@ -41,7 +41,17 @@ done
 j=1;
 for i in $mounts; do
   mkdir "$j"
-  sshfs -o IdentityFile=/storage/brno12-cerit/home/funnelworker/id_rsa.$$,UserKnownHostsFile=/dev/null,StrictHostKeyChecking=no funnelworker@${ssh_host}:"$i" "$j" || exit 2
+  k=1;
+  while true; do
+     sshfs -o IdentityFile=/storage/brno12-cerit/home/funnelworker/id_rsa.$$,UserKnownHostsFile=/dev/null,StrictHostKeyChecking=no funnelworker@${ssh_host}:"$i" "$j" && break;
+     echo "Waiting for ssh endpoint to be ready"
+     sleep $k;
+     k=$[k*2];
+     if [ $k -gt 2048 ]; then
+             echo "Timeout waiting for ssh endpoint";
+             exit 2;
+     fi
+  done
   binds=(${binds[*]} '--bind' "$j:$i")
   j=$[j+1]
 done

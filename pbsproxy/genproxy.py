@@ -48,7 +48,7 @@ spec:
       - name: ssh-proxy
         command:
         - /srv/start-sshproxy.sh
-        image: cerit.io/cerit/geant-proxy:v0.6
+        image: cerit.io/cerit/geant-proxy:v0.9
         imagePullPolicy: IfNotPresent
         securityContext:
           runAsUser: 1000

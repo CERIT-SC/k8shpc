@@ -30,4 +30,10 @@ COPY service.yaml /srv/
 COPY start-sshproxy.sh /srv/
 COPY genproxy.py /srv/
 
+USER 0
+
+RUN chown -R 1000:1000 /srv
+
+USER 1000
+
 CMD /bin/bash -c "set | grep 'PROXY\|KUBERNETES' | sed -e 's/^/export /' >> /home/funnelworker/.bashrc; /usr/sbin/sshd; if [ -n \"$SSH_KEY\" ]; then echo \"$SSH_KEY\" > /home/funnelworker/.ssh/authorized_keys; fi; tail -f /dev/null"
