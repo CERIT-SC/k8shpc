@@ -75,6 +75,7 @@ volumes=''
 volmounts=''
 name=[]
 mnts=[]
+pvcs={}
 
 i=1
 for e in os.environ.keys():
@@ -89,9 +90,13 @@ for e in os.environ.keys():
       pvc=pvc.replace("_","-")
       name.append(pvc+mnt)
       mnts.append(mnt)
-      volmounts=volmounts+"        - name: vol-%d\n          mountPath: '%s'\n"%(i, mnt)
-      volumes=volumes+"      - name: vol-%d\n        persistentVolumeClaim:\n          claimName: '%s'\n"%(i,pvc)
-      i=i+1
+      if pvcs.get(pvc):
+        volmounts=volmounts+"        - name: vol-%d\n          mountPath: '%s'\n"%(pvcs.get(pvc), mnt)
+      else:
+        volmounts=volmounts+"        - name: vol-%d\n          mountPath: '%s'\n"%(i, mnt)
+        volumes=volumes+"      - name: vol-%d\n        persistentVolumeClaim:\n          claimName: '%s'\n"%(i,pvc)
+        pvcs[pvc]=i
+        i=i+1
 
 name="".join(sorted(set(name)))
 

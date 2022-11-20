@@ -18,6 +18,11 @@ sif=`echo $image | sed -e 's/\//-/g'`
 
 mkdir $cache 2> /dev/null
 
+if [ -z $SCRATCHDIR ]; then
+  echo "SCRATCHDIR env must be defined"
+  exit 1
+fi
+
 cd $SCRATCHDIR || exit 1
 
 export TMPDIR=$SCRATCHDIR
