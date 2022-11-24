@@ -56,7 +56,7 @@ COPY --chown=${USER_UID} config.ini /srv/
 
 RUN /bin/bash -c "export USER_NAME=$USER_NAME; envsubst '\$USER_NAME' < /tmp/run-qsub.sh.tmpl > /srv/run-qsub.sh && rm -f /tmp/run-qsub.sh.tmpl"
 RUN /bin/bash -c "export USER_NAME=$USER_NAME; envsubst '\$USER_NAME' < /tmp/run-qsub-gpu.sh.tmpl > /srv/run-qsub-gpu.sh && rm -f /tmp/run-qsub-gpu.sh.tmpl"
-RUN /bin/bash -c "export USER_NAME=$USER_NAME; envsubst '\$USER_NAME' < /tmp/start.sh.tmpl > /srv/start.sh && rm -f /tmp/start.sh.tmpl"
+RUN /bin/bash -c "export USER_NAME=$USER_NAME; envsubst '\$USER_NAME' < /tmp/start.sh.tmpl > /srv/start.sh && rm -f /tmp/start.sh.tmpl && chmod a+rx /srv/start.sh"
 
 USER ${USER_UID}
 
