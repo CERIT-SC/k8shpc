@@ -2,7 +2,7 @@
 
 if ! kubectl get secret -n ${NAMESPACE} sshkey &> /dev/null; then
   echo -e "\n" | ssh-keygen -q -N ''
-  kubectl create secret generic sshkey --from-file=ssh-privatekey=/home/funnelworker/.ssh/id_rsa --from-file=ssh-publickey=/home/funnelworker/.ssh/id_rsa.pub -n ${NAMESPACE}
+  kubectl create secret generic sshkey --from-file=ssh-privatekey=/home/${USER_NAME}/.ssh/id_rsa --from-file=ssh-publickey=/home/${USER_NAME}/.ssh/id_rsa.pub -n ${NAMESPACE}
 fi
 
 export ssh_key=`kubectl get secret -n ${NAMESPACE} sshkey -o jsonpath='{.data.ssh-privatekey}' | base64 -d`
@@ -68,12 +68,21 @@ while true; do
    sleep 1;
 done 
 
-export ssh_host=${exppodname}.dyn.cloud.e-infra.cz
-
-while ! host $ssh_host &> /dev/null; do
+while true; do
+   export ssh_host=`kubectl get svc ${exppodname} -n ${NAMESPACE} -o 'jsonpath={.status.loadBalancer.ingress[0].ip}'`
+   if echo "$ssh_host" | grep -q '\.'; then
+      break;
+   fi
    sleep 5;
    echo "Waiting for ssh proxy to be alive.."
-done   
+done
+
+export ssh_port=`kubectl get svc ${exppodname} -n ${NAMESPACE} -o 'jsonpath={.spec.ports[0].port}'`
+
+while ! echo "" | nc ${ssh_host} ${ssh_port}; do
+   echo "Waiting for ssh proxy to be alive.."
+   sleep 5;
+done
 
 if [ -z $CPUL ]; then
    CPUL=$CPUR
@@ -90,8 +99,8 @@ fi
 
 MEML="$[MEML/1073741824+1]gb" # to GB
 
-unset COMMAND; for i in `seq 0 20`; do t=CMD_$i; [[ ! -z ${!t} ]] && COMMAND=(${COMMAND[*]} "'${!t}'"); done
-for i in `seq -w 0 20`; do t=ARG_$i; [[ ! -z ${!t} ]] && COMMAND=(${COMMAND[*]} "'${!t}'"); done
+unset COMMAND; i=0; while true; do t=CMD_$i; [[ -z ${!t} ]] && break; COMMAND=(${COMMAND[*]} "'${!t}'"); i=$[i+1]; done
+while true; do t=ARG_$i; [[ -z ${!t} ]] && break; COMMAND=(${COMMAND[*]} "'${!t}'"); i=$[i+1]; done
 
 unset ENVS; for i in `set | grep '^ENV_'`; do j=`echo $i | sed -e 's/=.*//'`; t=${!j}; n=${j#ENV_}; ENVS="${ENVS}export $n='$t'\n"; done
 
@@ -100,9 +109,9 @@ export CMD=${COMMAND[*]}
 export MNT=`/srv/genproxy.py --genmnt`
 
 if [ -z $GPUR -o $GPUR == 0 ]; then
-   envsubst '$ENVS $CMD $CONTAINER $MNT $ssh_host $ssh_key $MEML $CPUL' < /srv/run-qsub.sh > /tmp/run-qsub.sh
+   envsubst '$ENVS $CMD $CONTAINER $MNT $ssh_host $ssh_port $ssh_key $MEML $CPUL' < /srv/run-qsub.sh > /tmp/run-qsub.sh
 else
-   envsubst '$ENVS $CMD $CONTAINER $MNT $ssh_host $ssh_key $MEML $CPUL $GPUR' < /srv/run-qsub-gpu.sh > /tmp/run-qsub.sh
+   envsubst '$ENVS $CMD $CONTAINER $MNT $ssh_host $ssh_port $ssh_key $MEML $CPUL $GPUR' < /srv/run-qsub-gpu.sh > /tmp/run-qsub.sh
 fi
 
 jobid=`/usr/bin/qsub /tmp/run-qsub.sh`

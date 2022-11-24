@@ -1,19 +1,20 @@
 #!/bin/bash
-#PBS -o zuphux.cerit-sc.cz:logs/${PBS_JOBID}.stdout
-#PBS -e zuphux.cerit-sc.cz:logs/${PBS_JOBID}.stderr
+#PBS -o zuphux.cerit-sc.cz:logs/$$.stdout
+#PBS -e zuphux.cerit-sc.cz:logs/$$.stderr
 #PBS -l select=1:ncpus=$CPUL:mem=$MEML:ngpus=$GPUR:scratch_ssd=20gb:vnode=^samson
-#PBS -q gpu
 
 sshkey="$ssh_key"
 
-echo "$sshkey" > /storage/brno12-cerit/home/funnelworker/id_rsa.$$
-chmod 0600 /storage/brno12-cerit/home/funnelworker/id_rsa.$$
+home=`pwd`
+
+echo "$sshkey" > ${home}/id_rsa.$$
+chmod 0600 ${home}/id_rsa.$$
 
 image=$CONTAINER
 
 mounts="$MNT"
 
-cache='/storage/brno12-cerit/home/funnelworker/cache'
+cache='${home}/cache'
 sif=`echo $image | sed -e 's/\//-/g'`
 
 mkdir $cache 2> /dev/null
@@ -48,13 +49,13 @@ for i in $mounts; do
   mkdir "$j"
   k=1;
   while true; do
-     sshfs -o IdentityFile=/storage/brno12-cerit/home/funnelworker/id_rsa.$$,UserKnownHostsFile=/dev/null,StrictHostKeyChecking=no funnelworker@${ssh_host}:"$i" "$j" && break;
+     sshfs -o IdentityFile=${home}/id_rsa.$$,UserKnownHostsFile=/dev/null,StrictHostKeyChecking=no -p ${ssh_port} ${USER_NAME}@${ssh_host}:"$i" "$j" && break;
      echo "Waiting for ssh endpoint to be ready"
      sleep $k;
      k=$[k*2];
      if [ $k -gt 2048 ]; then
-             echo "Timeout waiting for ssh endpoint";
-             exit 2;
+	     echo "Timeout waiting for ssh endpoint";
+             exit 2;	     
      fi
   done
   binds=(${binds[*]} '--bind' "$j:$i")
@@ -63,7 +64,7 @@ done
 
 $ENVS
 
-singularity run ${binds[*]} -i "$cache/$sif" $CMD
+singularity run --bind $SCRATCHDIR:$SCRATCHDIR ${binds[*]} -i "$cache/$sif" $CMD
 
 ret=$?
 
@@ -73,6 +74,6 @@ for i in `seq 1 $j`; do
         umount "$i" && rmdir "$i";
 done
 
-rm -f /storage/brno12-cerit/home/funnelworker/id_rsa.$$
+rm -f ${home}/id_rsa.$$
 
 exit $ret

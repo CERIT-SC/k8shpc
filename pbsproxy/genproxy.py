@@ -1,34 +1,57 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import os
 import sys
 import hashlib
+import configparser
 
-addresspool=os.environ.get('ADDRESS_POOL', 'privmuni')
+config = configparser.ConfigParser()
+config.read('./config.ini')
+
+if not config.has_section('GENPROXY'):
+    print("/srv/config.ini does not have section GENPROXY. Exit.")
+    exit(1)
+
+config = config['GENPROXY']
+
+addresspool=config.get('metallb_addresspool', '')
+externaldomain=config.get('externaldomain', '')
+sshport=config.get('sshport')
+lbport=config.get('loadbalancerport')
+container=config.get('container')
+
+if not sshport or not lbport:
+    print("sshport and loadbalancerport must be defined in GENPROXY section in /srv/config.ini. Exit.")
+    exit(1)
 
 def gen_service(name, finalizer):
+  global externaldomain
+  global addresspool
   svc='''apiVersion: v1
 kind: Service
 metadata:
   name: {exppodname}
-  annotations:
-    external-dns.alpha.kubernetes.io/hostname: {exppodname}.dyn.cloud.e-infra.cz
-    metallb.universe.tf/address-pool: {net}
+  annotations: {externaldomain}{net}
   finalizers:{finalizer}
 spec:
   type: LoadBalancer
   ports:
-  - port: 22
-    targetPort: 2222
+  - port: {lbport}
+    targetPort: {sshport}
   selector:
     app: {exppodname}
   externalTrafficPolicy: Local
 '''
   if finalizer != '':
     finalizer = "\n  - "+finalizer
-  return svc.format(exppodname=name, net=addresspool, finalizer=finalizer)
+  if externaldomain:
+    externaldomain = "\n    external-dns.alpha.kubernetes.io/hostname: "+name+"."+externaldomain
+  if addresspool != '':
+    addresspool = "\n    metallb.universe.tf/address-pool: "+addresspool
+  return svc.format(exppodname=name, net=addresspool, finalizer=finalizer, lbport=lbport, sshport=sshport, externaldomain=externaldomain)
 
 def gen_deployment(name, finalizer, volmounts, volumes):
+  global container
   deployment='''apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -48,11 +71,8 @@ spec:
       - name: ssh-proxy
         command:
         - /srv/start-sshproxy.sh
-        image: cerit.io/cerit/geant-proxy:v0.9
+        image: {container}
         imagePullPolicy: IfNotPresent
-        securityContext:
-          runAsUser: 1000
-          runAsGroup: 1000
         env:
         - name: NAMESPACE
           value: {namespace}
@@ -61,11 +81,11 @@ spec:
             cpu: 1
             memory: 256Mi
         ports:
-        - containerPort: 2222
+        - containerPort: {sshport}
 '''
   if finalizer != '':
     finalizer = "\n  - "+finalizer
-  deployment = deployment.format(exppodname=name, finalizer=finalizer, namespace=os.environ.get("NAMESPACE"))
+  deployment = deployment.format(exppodname=name, finalizer=finalizer, namespace=os.environ.get("NAMESPACE"), sshport=sshport, container=container)
   if volmounts and volumes:
         deployment = deployment+"        volumeMounts:\n"+volmounts+"      volumes:\n"+volumes
   return deployment
@@ -110,11 +130,11 @@ for i in range(1,len(sys.argv)):
     finalizer = sys.argv[i+1]
     i = i + 1
   if sys.argv[i] == "--genproxy":
-    print(gen_service(name, finalizer))
+    print(gen_service(name, finalizer), end='')
     print("---")
     print(gen_deployment(name, finalizer, volmounts, volumes))
   if sys.argv[i] == "--genmnt":
     for j in mnts:
-      print(j+" "),
+      print(j+" ", end='')
   if sys.argv[i] == "--genname":
     print(name)
