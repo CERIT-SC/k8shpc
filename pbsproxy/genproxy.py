@@ -6,7 +6,7 @@ import hashlib
 import configparser
 
 config = configparser.ConfigParser()
-config.read('./config.ini')
+config.read('/srv/config.ini')
 
 if not config.has_section('GENPROXY'):
     print("/srv/config.ini does not have section GENPROXY. Exit.")

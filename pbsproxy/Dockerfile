@@ -9,7 +9,7 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 ARG KUBERNETES_VERSION=1.22.0
 # set value above 1024 if sshd will run without root
-ARG SSHPORT=2222
+ARG SSH_PORT=2222
 
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive  apt-get -y --no-install-recommends install  \
