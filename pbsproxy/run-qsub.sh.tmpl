@@ -14,7 +14,7 @@ image=$CONTAINER
 
 mounts="$MNT"
 
-cache='${home}/cache'
+cache="${home}/cache"
 sif=`echo $image | sed -e 's/\//-/g'`
 
 mkdir $cache 2> /dev/null
@@ -38,11 +38,6 @@ if ! [ -f "$cache/$sif" ]; then
 fi
 
 rmdir "$cache/$sif.lck"
-
-while ! host ${ssh_host} &> /dev/null; do
- sleep 5;
- echo "Waiting for host ${ssh_host} to be available..."
-done
 
 j=1;
 for i in $mounts; do
