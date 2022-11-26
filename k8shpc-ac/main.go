@@ -190,14 +190,6 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	replaceCommand := []string{"/bin/bash", "-c", "/srv/start.sh"}
 	//replaceCommand := []string{"/bin/bash", "-c", "sleep infinity"}
 
-	patches = replacePodSpecItem("containers/0/image", fmt.Sprintf("%s:%s", image, tag), patches)
-	patches = replacePodSpecItem("containers/0/command", replaceCommand, patches)
-	patches = replacePodSpecItem("automountServiceAccountToken", true, patches)
-	patches = replacePodSpecItem("containers/0/resources/limits/cpu", "100m", patches)
-	patches = replacePodSpecItem("containers/0/resources/requests/cpu", "100m", patches)
-	patches = replacePodSpecItem("containers/0/resources/limits/memory", "512Mi", patches)
-	patches = replacePodSpecItem("containers/0/resources/requests/memory", "512Mi", patches)
-
 	envVarsEmpty = len(job.Spec.Template.Spec.Containers[0].Env) == 0
 	for i, arg := range job.Spec.Template.Spec.Containers[0].Args {
 		patches = addEnvVar(fmt.Sprintf("ARG_%02d", i), arg, patches)
@@ -216,15 +208,28 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 
 	patches = addEnvVarFromField("NAMESPACE", "metadata.namespace", false, patches)
 	patches = addEnvVarFromField("POD_NAME", "metadata.name", false, patches)
-	patches = addEnvVarFromField("CPUR", "requests.cpu", true, patches)
-	patches = addEnvVarFromField("CPUL", "limits.cpu", true, patches)
-	patches = addEnvVarFromField("MEMR", "requests.memory", true, patches)
-	patches = addEnvVarFromField("MEML", "limits.memory", true, patches)
+
 	gpuR := job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", resource.DecimalSI)
+	cpuR := job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu()
+	cpuL := job.Spec.Template.Spec.Containers[0].Resources.Limits.Cpu()
+	memR := job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory()
+	memL := job.Spec.Template.Spec.Containers[0].Resources.Limits.Memory()
 	patches = addEnvVar("GPUR", gpuR.String(), patches)
+	patches = addEnvVar("CPUR", cpuR.String(), patches)
+	patches = addEnvVar("CPUL", cpuL.String(), patches)
+	patches = addEnvVar("MEMR", memR.String(), patches)
+	patches = addEnvVar("MEML", memL.String(), patches)
 
 	labelsEmpty = len(job.Spec.Template.Labels) == 0
 	patches = addLabelToPod("app", job.Name, patches)
+
+	patches = replacePodSpecItem("containers/0/image", fmt.Sprintf("%s:%s", image, tag), patches)
+	patches = replacePodSpecItem("containers/0/command", replaceCommand, patches)
+	patches = replacePodSpecItem("automountServiceAccountToken", true, patches)
+	patches = replacePodSpecItem("containers/0/resources/limits/cpu", "100m", patches)
+	patches = replacePodSpecItem("containers/0/resources/requests/cpu", "100m", patches)
+	patches = replacePodSpecItem("containers/0/resources/limits/memory", "512Mi", patches)
+	patches = replacePodSpecItem("containers/0/resources/requests/memory", "512Mi", patches)
 
 	patchesM, err = json.Marshal(patches)
 	if err != nil {

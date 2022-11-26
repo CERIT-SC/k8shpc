@@ -20,7 +20,7 @@ spec:
             - "while true; do /usr/local/bin/k8shpc-mutating-webhook -ext_mem=10686180622336 -ext_cpu=504 -ext_gpu=4 -k8s_mem=540203466752 -k8s_cpu=64 -k8s_gpu=2; sleep 1; done"
           env:
             - name: "TAG"
-              value: "v0.8"
+              value: "v0.10"
             - name: "IMAGE"
               value: "cerit.io/cerit/geant-proxy"
           readinessProbe:
