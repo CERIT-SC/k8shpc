@@ -19,8 +19,6 @@ webhooks:
         - key: hpctransfer
           operator: In
           values: ["can", "must", "cooperative"]
-#      matchLabels:
-#        hpctransfer: "yes"
     rules:
       - operations: ["CREATE"]
         apiGroups: ["batch"]

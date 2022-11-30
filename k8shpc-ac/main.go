@@ -148,27 +148,28 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// can, must, cooperative
-	if val == "can" { // can checks cluster maximum
-		move := checkMaxResources(
-			job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
-			job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value(),
-			job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().Value())
+	max := checkMaxResources(
+		job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
+		job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value(),
+		job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().Value())
 
-		if move == -1 {
-			sendResponse(admissionReviewReq, w, nil, false,
-				"sending back response, resources can not be accommodated anywhere")
-			return
-		} else if move == 0 {
+	if max == -1 {
+		sendResponse(admissionReviewReq, w, nil, false,
+			"sending back response, resources can not be accommodated anywhere")
+		return
+	}
+	if val == "can" { // can checks cluster maximum
+		if max == 0 {
 			sendResponse(admissionReviewReq, w, nil, true,
 				"sending back response, spec not changed (possible to accommodate in K8s)")
 			return
 		}
 	} else if val == "cooperative" { // cooperative checks currently available
-		move := checkCurrentResources(job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
+		current := checkCurrentResources(job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", "0").Value(),
 			job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value(),
 			job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().Value())
 
-		if !move {
+		if !current {
 			sendResponse(admissionReviewReq, w, nil, true,
 				"sending back response, spec not changed (possible to accommodate in K8s)")
 			return
@@ -184,11 +185,10 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	image = os.Getenv("IMAGE")
 	if len(image) == 0 {
-		tag = ""
+		sendResponse(admissionReviewReq, w, nil, false,
+			"sending back response, proxy image not set")
+		return
 	}
-
-	replaceCommand := []string{"/bin/bash", "-c", "/srv/start.sh"}
-	//replaceCommand := []string{"/bin/bash", "-c", "sleep infinity"}
 
 	envVarsEmpty = len(job.Spec.Template.Spec.Containers[0].Env) == 0
 	for i, arg := range job.Spec.Template.Spec.Containers[0].Args {
@@ -212,24 +212,32 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	gpuR := job.Spec.Template.Spec.Containers[0].Resources.Requests.Name("nvidia.com/gpu", resource.DecimalSI)
 	cpuR := job.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu()
 	cpuL := job.Spec.Template.Spec.Containers[0].Resources.Limits.Cpu()
-	memR := job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory()
-	memL := job.Spec.Template.Spec.Containers[0].Resources.Limits.Memory()
+	memR := job.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().Value()
+	memL := job.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().Value()
 	patches = addEnvVar("GPUR", gpuR.String(), patches)
 	patches = addEnvVar("CPUR", cpuR.String(), patches)
 	patches = addEnvVar("CPUL", cpuL.String(), patches)
-	patches = addEnvVar("MEMR", memR.String(), patches)
-	patches = addEnvVar("MEML", memL.String(), patches)
+	patches = addEnvVar("MEMR", strconv.FormatInt(memR, 10), patches)
+	patches = addEnvVar("MEML", strconv.FormatInt(memL, 10), patches)
 
 	labelsEmpty = len(job.Spec.Template.Labels) == 0
 	patches = addLabelToPod("app", job.Name, patches)
 
+	replaceCommand := []string{"/srv/start.sh"}
+
 	patches = replacePodSpecItem("containers/0/image", fmt.Sprintf("%s:%s", image, tag), patches)
 	patches = replacePodSpecItem("containers/0/command", replaceCommand, patches)
 	patches = replacePodSpecItem("automountServiceAccountToken", true, patches)
+
 	patches = replacePodSpecItem("containers/0/resources/limits/cpu", "100m", patches)
 	patches = replacePodSpecItem("containers/0/resources/requests/cpu", "100m", patches)
 	patches = replacePodSpecItem("containers/0/resources/limits/memory", "512Mi", patches)
 	patches = replacePodSpecItem("containers/0/resources/requests/memory", "512Mi", patches)
+
+	if gpuR.String() != "0" {
+		patches = removePodSpecItem("containers/0/resources/limits/nvidia.com~1gpu", patches)
+		patches = removePodSpecItem("containers/0/resources/requests/nvidia.com~1gpu", patches)
+	}
 
 	patchesM, err = json.Marshal(patches)
 	if err != nil {
@@ -381,6 +389,15 @@ func replacePodSpecItem(path string, value interface{}, patches []map[string]int
 		"op":    "replace",
 		"path":  "/spec/template/spec/" + path,
 		"value": value,
+	}
+	patches = append(patches, patch)
+	return patches
+}
+
+func removePodSpecItem(path string, patches []map[string]interface{}) []map[string]interface{} {
+	patch := map[string]interface{}{
+		"op":   "remove",
+		"path": "/spec/template/spec/" + path,
 	}
 	patches = append(patches, patch)
 	return patches

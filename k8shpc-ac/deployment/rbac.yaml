@@ -1,9 +1,3 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: k8shpc-sa
-  namespace: k8shpc-ns
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -30,36 +24,6 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: k8shpc-jobs-role
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: nf-jobs-role
-  namespace: nf-ns
-rules:
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["get", "watch", "list", "patch", "delete", "create"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "watch", "list", "patch", "delete", "create"]
-  - apiGroups: [""]
-    resources: ["pods/status"]
-    verbs: ["get", "watch", "list", "patch", "delete", "create"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: nf-jobs-rb
-  namespace: nf-ns
-subjects:
-  - kind: ServiceAccount
-    name: default
-    namespace: nf-ns
-roleRef:
-  kind: Role
-  name: nf-jobs-role
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
