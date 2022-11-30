@@ -41,7 +41,7 @@ WORKDIR /tmp
 
 EXPOSE ${SSH_PORT}
 
-RUN mkdir /etc/secrets && rm -f /etc/krb5.conf && ln -s /etc/secrets/pbs.conf /etc/pbs.conf && ln -s /etc/secrets/krb5.conf /etc/krb5.conf && ln -s /etc/secrets/krb5.keytab /etc/krb5.keytab
+RUN mkdir /etc/hpcconf && mkdir /etc/secrets && rm -f /etc/krb5.conf && ln -s /etc/hpcconf/pbs.conf /etc/pbs.conf && ln -s /etc/secrets/krb5.conf /etc/krb5.conf && ln -s /etc/secrets/krb5.keytab /etc/krb5.keytab
 
 RUN wget https://dl.k8s.io/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl -O /usr/bin/kubectl && chmod a+rx /usr/bin/kubectl
 
