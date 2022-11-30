@@ -23,7 +23,7 @@ spec:
             - "-k8s_gpu=2"
           env:
             - name: "TAG"
-              value: "v0.10"
+              value: "v0.11"
             - name: "IMAGE"
               value: "cerit.io/cerit/geant-proxy"
           readinessProbe:
