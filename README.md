@@ -11,8 +11,11 @@ On a higher level, the admission controller mutates the Kubernetes Job object wi
 ### PoC Implementation
 This implementation supports PBSPro scheduling system and Kerberos authentication. The solution was successfully tested with Nextflow [`nf-sarek`](https://github.com/nf-core/sarek/) pipeline and real-life data.
 
+If you would like to use any other scheduling system, the support must be implemented in similar way as for PBS. Some script from `pbsproxy` directory can be 
+reused or utilized for inspiration.
+
 ## Contents
-This repository consits of two main parts:
+This repository consists of two main parts:
 - Admission Controller Implementation https://github.com/CERIT-SC/k8shpc/tree/main/k8shpc-ac
 - Proxy scheduler implementation using PBSPro  https://github.com/CERIT-SC/k8shpc/tree/main/pbsproxy
 
