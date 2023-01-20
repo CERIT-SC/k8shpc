@@ -5,9 +5,13 @@ namespace="k8shpc-ns"
 context="kubt-cluster"
 csrName=${service}.${namespace}
 
-#openssl genrsa -out client.key 2048
+# openssl genrsa -out client.key 2048
+
 # https://github.com/kubernetes/kubernetes/issues/99504
-#openssl req -new -key client.key -subj "/CN=system:node:k8shpc-mutating-webhook-svc.k8shpc-ns.svc;/O=system:nodes"  -out client.csr -config csr.conf
+# openssl req -new -key client.key -subj "/CN=system:node:k8shpc-mutating-webhook-svc.k8shpc-ns.svc;/O=system:nodes"  -out client.csr -config csr.conf
+
+# or generally:
+# openssl req -new -key client.key -subj "/CN=system:node:k8shpc-mutating-webhook-svc.[namespace].svc;/O=system:nodes"  -out client.csr -config csr.conf
 
 # clean-up any previously created CSR for our service. Ignore errors if not present.
 kubectl config use-context ${context}
